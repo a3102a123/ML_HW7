@@ -23,9 +23,10 @@ class gif_creater:
         self.imgs = []
         self.fps = fps
 
-    def append(self,Y,labels):
+    def append(self,Y,labels,title):
         file_path = os.path.join("Image","GIF_Image","img{}.png".format(len(self.imgs)))
         plt.figure()
+        plt.title(title)
         plt.scatter(Y[:, 0], Y[:, 1], 20, labels)
         plt.savefig(file_path)
         plt.close()
@@ -142,7 +143,6 @@ def tsne(X=np.array([]),labels = np.array([]), no_dims=2, initial_dims=50, perpl
         return -1
 
     # Initialize variables
-    gif = gif_creater()
     X = pca(X, initial_dims).real
     (n, d) = X.shape
     max_iter = 1000
@@ -154,7 +154,13 @@ def tsne(X=np.array([]),labels = np.array([]), no_dims=2, initial_dims=50, perpl
     dY = np.zeros((n, no_dims))
     iY = np.zeros((n, no_dims))
     gains = np.ones((n, no_dims))
+    
+    gif = gif_creater()
     pre_C = -1
+    if is_symmetric:
+        title="Symmetric SNE"
+    else:
+        title="t-SNE"
 
     # Compute P-values
     P = x2p(X, 1e-5, perplexity)
@@ -211,18 +217,28 @@ def tsne(X=np.array([]),labels = np.array([]), no_dims=2, initial_dims=50, perpl
 
         # every 50 iteration store result to gif iamge
         if iter % 50 == 0:
-            gif.append(Y,labels)
+            gif.append(Y,labels,title)
 
         # Stop lying about P-values
         if iter == 100:
             P = P / 4.
-            break
+        break
 
-    # save result to gif
+    # save result to gif & visualize the pairwise similarity
     gif.save(os.path.join("Image","{}.gif".format(gif_name)))
+    plot_similarity(P,Q,title)
 
     # Return solution
-    return Y
+    return Y , P , Q
+
+# visualize the pairwise similarity
+def plot_similarity(P,Q,title):
+    fig, ax = plt.subplots(nrows=2, ncols=1, figsize=(10, 8), dpi=120)
+    plt.suptitle(title)
+    ax[0].set_title("similarities in high dimensional space")
+    ax[0].hist(P.flatten(),bins=100,log=True)
+    ax[1].set_title("similarities in low dimensional space")
+    ax[1].hist(Q.flatten(),bins=100,log=True)
 
 
 if __name__ == "__main__":
@@ -230,6 +246,7 @@ if __name__ == "__main__":
     print("Running example on 2,500 MNIST digits...")
     X = np.loadtxt("Data/mnist2500_X.txt")
     labels = np.loadtxt("Data/mnist2500_labels.txt")
-    Y = tsne(X, labels, 2, 50, 20.0,True,"Symmetric")
+    Y , P , Q = tsne(X, labels, 2, 50, 20.0,False,"Symmetric")
+    pylab.figure()
     pylab.scatter(Y[:, 0], Y[:, 1], 20, labels)
     pylab.show()
