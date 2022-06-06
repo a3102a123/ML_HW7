@@ -14,7 +14,29 @@
 
 import numpy as np
 import pylab
+import matplotlib.pyplot as plt
+import imageio
+import os
 
+class gif_creater:
+    def __init__(self,fps=2):
+        self.imgs = []
+        self.fps = fps
+
+    def append(self,Y,labels):
+        file_path = os.path.join("Image","GIF_Image","img{}.png".format(len(self.imgs)))
+        plt.figure()
+        plt.scatter(Y[:, 0], Y[:, 1], 20, labels)
+        plt.savefig(file_path)
+        plt.close()
+        img = plt.imread(file_path)
+        self.imgs.append(img)
+
+    def save(self,filepath):
+        imageio.mimsave(filepath, self.imgs, fps=self.fps)
+
+    def clear(self):
+        self.imgs.clear()
 
 def Hbeta(D=np.array([]), beta=1.0):
     """
@@ -104,7 +126,7 @@ def pca(X=np.array([]), no_dims=50):
     return Y
 
 
-def tsne(X=np.array([]), no_dims=2, initial_dims=50, perplexity=30.0,is_symmetric=False):
+def tsne(X=np.array([]),labels = np.array([]), no_dims=2, initial_dims=50, perplexity=30.0,is_symmetric=False,gif_name=None):
     """
         Runs t-SNE on the dataset in the NxD array X to reduce its
         dimensionality to no_dims dimensions. The syntaxis of the function is
@@ -120,6 +142,7 @@ def tsne(X=np.array([]), no_dims=2, initial_dims=50, perplexity=30.0,is_symmetri
         return -1
 
     # Initialize variables
+    gif = gif_creater()
     X = pca(X, initial_dims).real
     (n, d) = X.shape
     max_iter = 1000
@@ -186,9 +209,17 @@ def tsne(X=np.array([]), no_dims=2, initial_dims=50, perplexity=30.0,is_symmetri
             #     break
             # pre_C = C
 
+        # every 50 iteration store result to gif iamge
+        if iter % 50 == 0:
+            gif.append(Y,labels)
+
         # Stop lying about P-values
         if iter == 100:
             P = P / 4.
+            break
+
+    # save result to gif
+    gif.save(os.path.join("Image","{}.gif".format(gif_name)))
 
     # Return solution
     return Y
@@ -199,6 +230,6 @@ if __name__ == "__main__":
     print("Running example on 2,500 MNIST digits...")
     X = np.loadtxt("Data/mnist2500_X.txt")
     labels = np.loadtxt("Data/mnist2500_labels.txt")
-    Y = tsne(X, 2, 50, 20.0,True)
+    Y = tsne(X, labels, 2, 50, 20.0,True,"Symmetric")
     pylab.scatter(Y[:, 0], Y[:, 1], 20, labels)
     pylab.show()
