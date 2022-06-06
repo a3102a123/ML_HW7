@@ -104,7 +104,7 @@ def pca(X=np.array([]), no_dims=50):
     return Y
 
 
-def tsne(X=np.array([]), no_dims=2, initial_dims=50, perplexity=30.0):
+def tsne(X=np.array([]), no_dims=2, initial_dims=50, perplexity=30.0,is_symmetric=False):
     """
         Runs t-SNE on the dataset in the NxD array X to reduce its
         dimensionality to no_dims dimensions. The syntaxis of the function is
@@ -131,6 +131,7 @@ def tsne(X=np.array([]), no_dims=2, initial_dims=50, perplexity=30.0):
     dY = np.zeros((n, no_dims))
     iY = np.zeros((n, no_dims))
     gains = np.ones((n, no_dims))
+    pre_C = -1
 
     # Compute P-values
     P = x2p(X, 1e-5, perplexity)
@@ -143,17 +144,27 @@ def tsne(X=np.array([]), no_dims=2, initial_dims=50, perplexity=30.0):
     for iter in range(max_iter):
 
         # Compute pairwise affinities
+        # sum_Y is some of square of every dimension of every data point in low dimensional space(N*1)
         sum_Y = np.sum(np.square(Y), 1)
         num = -2. * np.dot(Y, Y.T)
-        num = 1. / (1. + np.add(np.add(num, sum_Y).T, sum_Y))
+        
+        if is_symmetric:
+            num = np.exp(-np.add(np.add(num, sum_Y).T, sum_Y))
+        else:
+            num = 1. / (1. + np.add(np.add(num, sum_Y).T, sum_Y))
+
         num[range(n), range(n)] = 0.
         Q = num / np.sum(num)
         Q = np.maximum(Q, 1e-12)
 
         # Compute gradient
         PQ = P - Q
-        for i in range(n):
-            dY[i, :] = np.sum(np.tile(PQ[:, i] * num[:, i], (no_dims, 1)).T * (Y[i, :] - Y), 0)
+        if is_symmetric:
+            for i in range(n):
+                dY[i, :] = np.sum(np.tile(PQ[:, i], (no_dims, 1)).T * (Y[i, :] - Y), 0)
+        else:
+            for i in range(n):
+                dY[i, :] = np.sum(np.tile(PQ[:, i] * num[:, i], (no_dims, 1)).T * (Y[i, :] - Y), 0)
 
         # Perform the update
         if iter < 20:
@@ -171,6 +182,9 @@ def tsne(X=np.array([]), no_dims=2, initial_dims=50, perplexity=30.0):
         if (iter + 1) % 10 == 0:
             C = np.sum(P * np.log(P / Q))
             print("Iteration %d: error is %f" % (iter + 1, C))
+            # if pre_C == C:
+            #     break
+            # pre_C = C
 
         # Stop lying about P-values
         if iter == 100:
@@ -185,6 +199,6 @@ if __name__ == "__main__":
     print("Running example on 2,500 MNIST digits...")
     X = np.loadtxt("Data/mnist2500_X.txt")
     labels = np.loadtxt("Data/mnist2500_labels.txt")
-    Y = tsne(X, 2, 50, 20.0)
+    Y = tsne(X, 2, 50, 20.0,True)
     pylab.scatter(Y[:, 0], Y[:, 1], 20, labels)
     pylab.show()
