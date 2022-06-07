@@ -107,31 +107,43 @@ def PCA(data,dim=None,is_kernel=False,gamma=15):
     # im_show_gray(W[:,5].reshape(img_h,img_w))
     return W
 
-def LDA(data,stride,class_num,is_kernel=False,gamma=15):
+def LDA(data,dim=None,stride=9,class_num=15,is_kernel=False,gamma=15):
     N , d = data.shape
     mean = np.mean(data,axis=0)
     Sw = np.zeros((d,d))
     Sb = np.zeros((d,d))
-    # get the mean of every image subjects
-    classes_mean = np.zeros((class_num,d))
-    for i in range(class_num):
-        begin = i * stride
-        end = begin + stride
-        classes_mean[i,:] = np.mean(data[begin:end,:],axis=0)
 
-    # the distance within class scatter
-    for i in range(class_num):
-        for j in range(stride):
-            d = data[i*stride+j,:] - classes_mean[i,:]
-            Sw += d.T @ d
+    if is_kernel:
+        K = kernel(data,data,gamma,True)
+        Z = np.zeros_like(K)
+        diag_block = np.ones((stride,stride)) / stride
+        for i in range(class_num):
+            Z[i*stride:(i+1)*stride,i*stride:(i+1)*stride] = diag_block
+        Sw = K@K
+        Sb = K@Z@K
+    else:
+        # get the mean of every image subjects
+        classes_mean = np.zeros((class_num,d))
+        for i in range(class_num):
+            begin = i * stride
+            end = begin + stride
+            classes_mean[i,:] = np.mean(data[begin:end,:],axis=0)
 
-    # the distance between class scatter
-    for i in range(class_num):
-        d = classes_mean[i,:] - mean
-        Sb += stride * (d.T @ d)
+        # the distance within class scatter
+        for i in range(class_num):
+            for j in range(stride):
+                d = data[i*stride+j,:] - classes_mean[i,:]
+                Sw += d.T @ d
+
+        # the distance between class scatter
+        for i in range(class_num):
+            d = classes_mean[i,:] - mean
+            Sb += stride * (d.T @ d)
 
     eigValues , eigVectors = np.linalg.eig(np.linalg.pinv(Sw)@Sb)
     index = np.argsort(eigValues)[::-1]
+    if dim != None:
+        index = index[:dim]
     W = eigVectors[:,index].real.astype(np.float64)
     return W
     # im_show_gray(W[:,1].reshape(img_h,img_w))
@@ -139,7 +151,7 @@ def LDA(data,stride,class_num,is_kernel=False,gamma=15):
 def reconstruct(W,mean,img_data):
     y = W.T @ (img_data - mean)
     x = W @ y + mean
-    x = normalize(x) * 255
+    # x = normalize(x) * 255
     img = x.reshape(img_h,img_w)
     return img
 
@@ -174,23 +186,27 @@ load()
 pca_W = PCA(train_imgs,train_imgs.shape[0] - 15)
 
 train_imgs_pca = (train_imgs - np.mean(train_imgs,axis=0)) @ pca_W
-lda_W = LDA(train_imgs_pca,9,15)
+lda_W = LDA(train_imgs_pca)
 
 W = pca_W @ lda_W
-W = PCA(train_imgs,dim=20,is_kernel=True,gamma=KPCA_gamma)
-t_k = kernel(train_imgs,[testing_imgs[0]],is_center=False,gamma=KPCA_gamma)
-l = knn(W.T@t_k,W,train_label,5)
+# W = PCA(train_imgs)
+# W = PCA(train_imgs,dim=20,is_kernel=True,gamma=KPCA_gamma)
+# W = LDA(train_imgs,dim=20,is_kernel=True,gamma=KPCA_gamma)
 # plot_W(W)
-# sys.exit()
+
 count = 0
 # testing
 N = testing_imgs.shape[0]
 for i in range(N):
-    # img = reconstruct(W,train_mean,testing_imgs[i])
-    t_k = kernel(train_imgs,[testing_imgs[i]],is_center=False,gamma=KPCA_gamma)
-    img = W.T@t_k
-    l = knn(img.flatten(),W,train_label,3)
-    # l = knn(img.flatten(),train_imgs,train_label,3)
+    # test PCA , LDA
+    img = reconstruct(W,train_mean,testing_imgs[i])
+    l = knn(img.flatten(),train_imgs,train_label,3)
+
+    # test kernel PCA , kernel LDA
+    # t_k = kernel(train_imgs,[testing_imgs[i]],is_center=False,gamma=KPCA_gamma)
+    # img = W.T@t_k
+    # l = knn(img.flatten(),W,train_label,3)
+
     print("True label : {} , predict label : {}".format(testing_label[i],l))
     if testing_label[i] == l :
         count += 1
