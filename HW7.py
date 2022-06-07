@@ -1,3 +1,4 @@
+from dataclasses import replace
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,7 +16,8 @@ train_mean = 0
 testing_mean = 0
 img_w = 0
 img_h = 0
-KPCA_gamma = 0.000001
+RBF_gamma = 0.000001
+linear_gamma = 1
 
 def im_show_gray(img):
     plt.imshow(img,cmap='gray')
@@ -26,24 +28,19 @@ def data_to_img(img_data):
 def normalize(data):
     return (data - np.min(data)) / (np.max(data) - np.min(data))
 
-def kernel(X,Y,gamma = 1,is_center = True):
-    dist = cdist(X,Y,'sqeuclidean')
-    K = np.exp(-gamma * dist)
+# mode : 0 : RBF , 1 : linear kernel(cosine similarity)
+def kernel(X,Y,gamma = 1,is_center = True,mode=0):
+    if mode == 0:
+        dist = cdist(X,Y,'sqeuclidean')
+        K = np.exp(-gamma * dist)
+    elif mode == 1:
+        K = gamma* (1 - cdist(X,Y,'cosine'))
     # Center the kernel matrix.
     if is_center:
         N = K.shape[0]
         one_n = np.ones((N,N)) / N
         K = K - one_n.dot(K) - K.dot(one_n) + one_n.dot(K).dot(one_n)
     return K
-
-def plot_W(W):
-    plt.figure(figsize=(8, 6), dpi=120)
-    plt.subplots_adjust( wspace=0.2 ,hspace=0.4)
-    for i in range(25):
-        plt.subplot(5,5,i+1)
-        plt.axis('off')
-        plt.title(str(i+1) + ' Image')
-        im_show_gray(W[:,i].reshape(img_h,img_w))
 
 def info(W):
     print("image size : {} x {} = {}".format(img_h,img_w,img_h*img_w))
@@ -88,10 +85,10 @@ def knn(img_data,imgs,label,k):
     return ret
 
 
-def PCA(data,dim=None,is_kernel=False,gamma=15):
+def PCA(data,dim=None,is_kernel=False,gamma=15,mode=0):
     N = data.shape[0]
     if is_kernel:
-        cov = kernel(data,data,gamma=gamma,is_center=True)
+        cov = kernel(data,data,gamma=gamma,is_center=True,mode=mode)
         # plt.figure()
         # plt.imshow(cov)
     else:
@@ -107,14 +104,14 @@ def PCA(data,dim=None,is_kernel=False,gamma=15):
     # im_show_gray(W[:,5].reshape(img_h,img_w))
     return W
 
-def LDA(data,dim=None,stride=9,class_num=15,is_kernel=False,gamma=15):
+def LDA(data,dim=None,stride=9,class_num=15,is_kernel=False,gamma=15,mode=0):
     N , d = data.shape
     mean = np.mean(data,axis=0)
     Sw = np.zeros((d,d))
     Sb = np.zeros((d,d))
 
     if is_kernel:
-        K = kernel(data,data,gamma,True)
+        K = kernel(data,data,gamma,True,mode=mode)
         Z = np.zeros_like(K)
         diag_block = np.ones((stride,stride)) / stride
         for i in range(class_num):
@@ -155,6 +152,66 @@ def reconstruct(W,mean,img_data):
     img = x.reshape(img_h,img_w)
     return img
 
+def plot_W(W,is_PCA=True):
+    plt.figure(figsize=(8, 6), dpi=120)
+    if is_PCA:
+        plt.suptitle("Eigenface")
+    else:
+        plt.suptitle("Fisherface")
+    plt.subplots_adjust( wspace=0.2 ,hspace=0.4)
+    for i in range(25):
+        plt.subplot(5,5,i+1)
+        plt.axis('off')
+        plt.title(str(i+1) + ' Image')
+        im_show_gray(W[:,i].reshape(img_h,img_w))
+
+    fig = plt.figure(figsize=(10, 6), dpi=120)
+    plt.suptitle("Face reconstruction")
+    plt.subplots_adjust( wspace=0.1 ,hspace=0.5)
+    np.random.seed(512)
+    idx = np.random.choice(len(testing_label), size=10,replace=False)
+    for i in range(10):
+        img_data = testing_imgs[idx[i]]
+        plt.subplot(2,10,i + 1)
+        plt.gca().set_xticks([])
+        plt.gca().set_yticks([])
+        if i == 0:
+            plt.ylabel("Origin image")
+        img = img_data.reshape((img_h,img_w))
+        im_show_gray(img)
+        plt.subplot(2,10,i + 11)
+        plt.gca().set_xticks([])
+        plt.gca().set_yticks([])
+        if i == 0:
+            plt.ylabel("Reconstructed image")
+        img = reconstruct(W,train_mean,img_data)
+        im_show_gray(img)
+
+# predict testing data by orthogonal projection matrix W which is got by (kernel) PCA , LDA
+def predict(W,is_kernel=False,gamma=15,is_PCA=True,mode=0):
+    count = 0
+    # testing
+    N = testing_imgs.shape[0]
+    for i in range(N):
+        # test kernel PCA , kernel LDA
+        if is_kernel:
+            t_k = kernel(train_imgs,[testing_imgs[i]],is_center=False,gamma=gamma,mode=mode)
+            img = W.T@t_k
+            l = knn(img.flatten(),W,train_label,3)
+        # test PCA , LDA
+        else:
+            img = reconstruct(W,train_mean,testing_imgs[i])
+            l = knn(img.flatten(),train_imgs,train_label,3)
+
+        print("True label : {} , predict label : {}".format(testing_label[i],l))
+        if testing_label[i] == l :
+            count += 1
+            # plt.figure()
+            # im_show_gray(img)
+    print("Accuracy : {} / {} ({:.2f}%)".format(count,N,count / N * 100))
+    if not is_kernel:
+        plot_W(W,is_PCA)
+
 def test_kernel_PCA():
     # test kernel PCA in sample data set
     from sklearn.datasets import make_moons
@@ -167,7 +224,7 @@ def test_kernel_PCA():
     plt.tight_layout()
 
     print("Test Kernel PCA :")
-    X_kpca = PCA(X,dim=2,is_kernel=True,gamma=15)
+    X_kpca = PCA(X,dim=2,is_kernel=True,gamma=15,mode=0)
 
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(7, 3))
     ax[0].scatter(X_kpca[y==0, 0], X_kpca[y==0, 1],color='red', marker='^', alpha=0.5)
@@ -190,29 +247,13 @@ lda_W = LDA(train_imgs_pca)
 
 W = pca_W @ lda_W
 # W = PCA(train_imgs)
-# W = PCA(train_imgs,dim=20,is_kernel=True,gamma=KPCA_gamma)
-# W = LDA(train_imgs,dim=20,is_kernel=True,gamma=KPCA_gamma)
+W = PCA(train_imgs,dim=20,is_kernel=True,gamma=linear_gamma,mode=1)
+# W = LDA(train_imgs,dim=20,is_kernel=True,gamma=linear_gamma,mode=0)
+
 # plot_W(W)
 
-count = 0
 # testing
-N = testing_imgs.shape[0]
-for i in range(N):
-    # test PCA , LDA
-    img = reconstruct(W,train_mean,testing_imgs[i])
-    l = knn(img.flatten(),train_imgs,train_label,3)
-
-    # test kernel PCA , kernel LDA
-    # t_k = kernel(train_imgs,[testing_imgs[i]],is_center=False,gamma=KPCA_gamma)
-    # img = W.T@t_k
-    # l = knn(img.flatten(),W,train_label,3)
-
-    print("True label : {} , predict label : {}".format(testing_label[i],l))
-    if testing_label[i] == l :
-        count += 1
-        # plt.figure()
-        # im_show_gray(img)
-print("Accuracy : {} / {} ({:.2f}%)".format(count,N,count / N * 100))
+predict(W,is_kernel=True,gamma=linear_gamma,is_PCA=False,mode=1)
 # img = reconstruct(W,train_mean,testing_imgs[0])
 # plt.figure()
 # im_show_gray(img)
@@ -220,4 +261,6 @@ print("Accuracy : {} / {} ({:.2f}%)".format(count,N,count / N * 100))
 # im_show_gray(data_to_img(testing_imgs[0]))
 info(W)
 # test_kernel_PCA()
+# plt.figure()
+# plt.imshow(kernel(train_imgs,train_imgs,linear_gamma,True,1))
 plt.show()
