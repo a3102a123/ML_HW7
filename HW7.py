@@ -81,27 +81,27 @@ def knn(img_data,imgs,label,k):
         ret = label[np.argmin(dist[index[:k]])]
     else:
         ret = result_l[np.argmax(result_c)]
-    print(np.unique(result,return_counts=True),ret)
+    # print(np.unique(result,return_counts=True),ret)
     return ret
 
 
 def PCA(data,dim=None,is_kernel=False,gamma=15,mode=0):
     N = data.shape[0]
+    # kernel PCA
     if is_kernel:
         cov = kernel(data,data,gamma=gamma,is_center=True,mode=mode)
-        # plt.figure()
-        # plt.imshow(cov)
+    # PCA
     else:
         mean = np.mean(data,axis=0)
+        # center the data
         data = data - mean
         cov = np.cov(data.T)
+    # slove the eigenvalue problem of covariance matrix
     eigValues , eigVectors = np.linalg.eig(cov)
     index = np.argsort(eigValues)[::-1]
     if dim != None:
         index = index[:dim]
     W = eigVectors[:,index].real.astype(np.float64)
-    # im_show_gray(data[5].reshape(img_h,img_w))
-    # im_show_gray(W[:,5].reshape(img_h,img_w))
     return W
 
 def LDA(data,dim=None,stride=9,class_num=15,is_kernel=False,gamma=15,mode=0):
@@ -137,6 +137,7 @@ def LDA(data,dim=None,stride=9,class_num=15,is_kernel=False,gamma=15,mode=0):
             d = classes_mean[i,:] - mean
             Sb += stride * (d.T @ d)
 
+    # slove the eigenvalue problem of covariance matrix
     eigValues , eigVectors = np.linalg.eig(np.linalg.pinv(Sw)@Sb)
     index = np.argsort(eigValues)[::-1]
     if dim != None:
@@ -197,17 +198,21 @@ def predict(W,is_kernel=False,gamma=15,is_PCA=True,mode=0):
         if is_kernel:
             t_k = kernel(train_imgs,[testing_imgs[i]],is_center=False,gamma=gamma,mode=mode)
             img = W.T@t_k
-            l = knn(img.flatten(),W,train_label,3)
+            l = knn(img.flatten(),W,train_label,5)
         # test PCA , LDA
         else:
             img = reconstruct(W,train_mean,testing_imgs[i])
-            l = knn(img.flatten(),train_imgs,train_label,3)
+            l = knn(img.flatten(),train_imgs,train_label,5)
 
-        print("True label : {} , predict label : {}".format(testing_label[i],l))
+        # print("True label : {} , predict label : {}".format(testing_label[i],l))
         if testing_label[i] == l :
             count += 1
-            # plt.figure()
-            # im_show_gray(img)
+            # if count == 1:
+            #     plt.figure()
+            #     im_show_gray(img)
+        # else:
+        #     plt.figure()
+        #     im_show_gray(img)
     print("Accuracy : {} / {} ({:.2f}%)".format(count,N,count / N * 100))
     if not is_kernel:
         plot_W(W,is_PCA)
@@ -247,13 +252,15 @@ lda_W = LDA(train_imgs_pca)
 
 W = pca_W @ lda_W
 # W = PCA(train_imgs)
-W = PCA(train_imgs,dim=20,is_kernel=True,gamma=linear_gamma,mode=1)
-# W = LDA(train_imgs,dim=20,is_kernel=True,gamma=linear_gamma,mode=0)
+W = PCA(train_imgs,is_kernel=True,gamma=linear_gamma,mode=1)
+predict(W,is_kernel=True,gamma=linear_gamma,is_PCA=True,mode=1)
+W = LDA(train_imgs,dim=20,is_kernel=True,gamma=linear_gamma,mode=1)
+predict(W,is_kernel=True,gamma=linear_gamma,is_PCA=False,mode=1)
 
 # plot_W(W)
 
 # testing
-predict(W,is_kernel=True,gamma=linear_gamma,is_PCA=False,mode=1)
+# predict(W,is_kernel=False,gamma=linear_gamma,is_PCA=False,mode=1)
 # img = reconstruct(W,train_mean,testing_imgs[0])
 # plt.figure()
 # im_show_gray(img)

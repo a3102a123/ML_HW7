@@ -216,13 +216,13 @@ def tsne(X=np.array([]),labels = np.array([]), no_dims=2, initial_dims=50, perpl
             # pre_C = C
 
         # every 50 iteration store result to gif iamge
-        if iter % 50 == 0:
+        if iter % 5 == 0:
             gif.append(Y,labels,title)
 
         # Stop lying about P-values
         if iter == 100:
             P = P / 4.
-        break
+        # break
 
     # save result to gif & visualize the pairwise similarity
     gif.save(os.path.join("Image","{}.gif".format(gif_name)))
@@ -246,7 +246,14 @@ if __name__ == "__main__":
     print("Running example on 2,500 MNIST digits...")
     X = np.loadtxt("Data/mnist2500_X.txt")
     labels = np.loadtxt("Data/mnist2500_labels.txt")
-    Y , P , Q = tsne(X, labels, 2, 50, 20.0,False,"Symmetric")
-    pylab.figure()
-    pylab.scatter(Y[:, 0], Y[:, 1], 20, labels)
+    # Y , P , Q = tsne(X, labels, 2, 50, 20.0,True,"Symmetric")
+    Y , P , Q = tsne(X, labels, 2, 50, 20.0,False,"t-SNE")
+    # for i in range(0,15,5):
+    #     print("perplexity : ",i)
+    #     if i == 0:
+    #         i = 3
+    #     Y , P , Q = tsne(X, labels, 2, 50, i,False,"t-SNE")
+    #     pylab.figure()
+    #     pylab.title("t-SNE perplexity = {}".format(i))
+    #     pylab.scatter(Y[:, 0], Y[:, 1], 20, labels)
     pylab.show()
